@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AbsenKelas — Sistem Absensi Digital</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon"><i class="fa-solid fa-graduation-cap"></i></div>
+    <div class="brand-text">
+      <span class="brand-name">AbsenKelas</span>
+      <span class="brand-sub">Sistem Absensi Digital</span>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a href="#" class="nav-item active" data-page="absensi">
+      <i class="fa-solid fa-clipboard-check"></i>
+      <span>Absensi Hari Ini</span>
+    </a>
+    <a href="#" class="nav-item" data-page="riwayat">
+      <i class="fa-solid fa-clock-rotate-left"></i>
+      <span>Riwayat Absensi</span>
+    </a>
+    <a href="#" class="nav-item" data-page="rekap">
+      <i class="fa-solid fa-chart-bar"></i>
+      <span>Rekap & Statistik</span>
+    </a>
+    <a href="#" class="nav-item" data-page="siswa">
+      <i class="fa-solid fa-user-group"></i>
+      <span>Data Siswa</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="class-info">
+      <i class="fa-solid fa-users"></i>
+      <span>23 Siswa Terdaftar</span>
+    </div>
+    <div class="class-info" style="margin-top:8px">
+      <i class="fa-solid fa-male" style="color:var(--accent-blue)"></i>
+      <span id="countLaki">— Laki-laki</span>
+    </div>
+    <div class="class-info" style="margin-top:4px">
+      <i class="fa-solid fa-female" style="color:var(--izin)"></i>
+      <span id="countPerempuan">— Perempuan</span>
+    </div>
+  </div>
+</aside>
+
+<!-- OVERLAY MOBILE -->
+<div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+
+<!-- MAIN CONTENT -->
+<main class="main-content" id="mainContent">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="menu-btn" onclick="toggleSidebar()">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+      <div class="page-title" id="pageTitle">Absensi Hari Ini</div>
+    </div>
+    <div class="topbar-right">
+      <div class="date-badge" id="topbarDate"></div>
+      <button class="btn-export" onclick="printAbsensi()" title="Cetak">
+        <i class="fa-solid fa-print"></i>
+        <span>Cetak</span>
+      </button>
+      <button class="btn-export" onclick="exportCSV()" title="Export CSV">
+        <i class="fa-solid fa-file-arrow-down"></i>
+        <span>Export</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- PAGE: ABSENSI -->
+  <section class="page active" id="page-absensi">
+    <div class="page-header">
+      <div>
+        <h1 class="section-title">Absensi Hari Ini</h1>
+        <p class="section-sub" id="dateDisplay"></p>
+      </div>
+      <div class="header-actions">
+        <div class="status-pill" id="statusPill"></div>
+        <select class="select-month" id="filterGender" onchange="renderStudentList(false)">
+          <option value="">Semua Jenis Kelamin</option>
+          <option value="L">Laki-laki</option>
+          <option value="P">Perempuan</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- QUICK STATS -->
+    <div class="stats-row" id="quickStats">
+      <div class="stat-card hadir">
+        <div class="stat-icon"><i class="fa-solid fa-circle-check"></i></div>
+        <div class="stat-info">
+          <span class="stat-num" id="statHadir">0</span>
+          <span class="stat-label">Hadir</span>
+        </div>
+      </div>
+      <div class="stat-card sakit">
+        <div class="stat-icon"><i class="fa-solid fa-heart-pulse"></i></div>
+        <div class="stat-info">
+          <span class="stat-num" id="statSakit">0</span>
+          <span class="stat-label">Sakit</span>
+        </div>
+      </div>
+      <div class="stat-card izin">
+        <div class="stat-icon"><i class="fa-solid fa-envelope-open-text"></i></div>
+        <div class="stat-info">
+          <span class="stat-num" id="statIzin">0</span>
+          <span class="stat-label">Izin</span>
+        </div>
+      </div>
+      <div class="stat-card alpa">
+        <div class="stat-icon"><i class="fa-solid fa-circle-xmark"></i></div>
+        <div class="stat-info">
+          <span class="stat-num" id="statAlpa">0</span>
+          <span class="stat-label">Alpa</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOCKED NOTICE -->
+    <div class="locked-notice" id="lockedNotice" style="display:none">
+      <i class="fa-solid fa-lock"></i>
+      <div>
+        <strong>Absensi hari ini sudah tersimpan.</strong>
+        <p>Anda dapat mengedit melalui menu Riwayat Absensi.</p>
+      </div>
+    </div>
+
+    <!-- ABSENSI FORM -->
+    <div class="attendance-card" id="attendanceCard">
+      <div class="card-header-row">
+        <h2><i class="fa-solid fa-list-check"></i> Daftar Siswa</h2>
+        <div class="bulk-actions">
+          <span class="bulk-label">Tandai semua:</span>
+          <button class="bulk-btn hadir" onclick="markAll('Hadir')">Hadir</button>
+          <button class="bulk-btn sakit" onclick="markAll('Sakit')">Sakit</button>
+          <button class="bulk-btn izin" onclick="markAll('Izin')">Izin</button>
+          <button class="bulk-btn alpa" onclick="markAll('Alpa')">Alpa</button>
+        </div>
+      </div>
+      <div class="search-bar-absensi">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="searchAbsensi" placeholder="Cari nama siswa..." oninput="renderStudentList(false)"/>
+      </div>
+
+      <div class="student-list" id="studentList"></div>
+
+      <div class="form-footer">
+        <div class="progress-wrap">
+          <span class="progress-label">Progress: <span id="progressCount">0</span>/23 siswa diisi</span>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progressBar"></div>
+          </div>
+        </div>
+        <button class="btn-submit" id="submitBtn" onclick="submitAbsensi()">
+          <i class="fa-solid fa-paper-plane"></i>
+          Simpan Absensi
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAGE: RIWAYAT -->
+  <section class="page" id="page-riwayat">
+    <div class="page-header">
+      <div>
+        <h1 class="section-title">Riwayat Absensi</h1>
+        <p class="section-sub">Data absensi semua tanggal</p>
+      </div>
+      <div class="header-actions">
+        <div class="search-wrap">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="searchRiwayat" placeholder="Cari tanggal atau nama..." oninput="renderRiwayat()"/>
+        </div>
+      </div>
+    </div>
+
+    <div id="riwayatList"></div>
+  </section>
+
+  <!-- PAGE: REKAP -->
+  <section class="page" id="page-rekap">
+    <div class="page-header">
+      <div>
+        <h1 class="section-title">Rekap & Statistik</h1>
+        <p class="section-sub">Rangkuman kehadiran per siswa</p>
+      </div>
+      <div class="header-actions">
+        <select class="select-month" id="filterBulan" onchange="renderRekap()"></select>
+      </div>
+    </div>
+
+    <div class="rekap-grid">
+      <!-- Summary cards -->
+      <div class="rekap-summary" id="rekapSummary"></div>
+
+      <!-- Chart -->
+      <div class="chart-card">
+        <h3><i class="fa-solid fa-chart-pie"></i> Distribusi Kehadiran</h3>
+        <div class="donut-wrap">
+          <svg class="donut-chart" id="donutChart" viewBox="0 0 200 200"></svg>
+          <div class="donut-legend" id="donutLegend"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rekap Table -->
+    <div class="rekap-card">
+      <div class="card-header-row">
+        <h2><i class="fa-solid fa-table"></i> Detail Per Siswa</h2>
+        <input type="text" class="search-inline" id="searchRekap" placeholder="Cari siswa..." oninput="renderRekap()"/>
+      </div>
+      <div class="table-wrap">
+        <table class="rekap-table" id="rekapTable">
+          <thead>
+            <tr>
+              <th>No</th>
+              <th>Nama Siswa</th>
+              <th><span class="badge-th hadir">Hadir</span></th>
+              <th><span class="badge-th sakit">Sakit</span></th>
+              <th><span class="badge-th izin">Izin</span></th>
+              <th><span class="badge-th alpa">Alpa</span></th>
+              <th>Total Hari</th>
+              <th>% Hadir</th>
+            </tr>
+          </thead>
+          <tbody id="rekapTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  <!-- PAGE: DATA SISWA -->
+  <section class="page" id="page-siswa">
+    <div class="page-header">
+      <div>
+        <h1 class="section-title">Data Siswa</h1>
+        <p class="section-sub">23 siswa terdaftar di kelas ini</p>
+      </div>
+      <div class="header-actions">
+        <div class="search-wrap">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="searchSiswa" placeholder="Cari nama..." oninput="renderDataSiswa()"/>
+        </div>
+        <select class="select-month" id="filterSiswaGender" onchange="renderDataSiswa()">
+          <option value="">Semua</option>
+          <option value="L">Laki-laki</option>
+          <option value="P">Perempuan</option>
+        </select>
+      </div>
+    </div>
+    <div class="rekap-card">
+      <div class="table-wrap">
+        <table class="rekap-table" id="siswatable">
+          <thead>
+            <tr>
+              <th>No</th>
+              <th>Nama Siswa</th>
+              <th>Jenis Kelamin</th>
+              <th>Total Kehadiran</th>
+              <th>Tindakan</th>
+            </tr>
+          </thead>
+          <tbody id="siswaTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- MODAL EDIT -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal()"></div>
+<div class="modal" id="editModal">
+  <div class="modal-header">
+    <h3><i class="fa-solid fa-pen-to-square"></i> Edit Absensi</h3>
+    <button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="modal-body">
+    <p class="modal-date" id="modalDate"></p>
+    <div id="modalStudentList"></div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn-cancel" onclick="closeModal()">Batal</button>
+    <button class="btn-save" onclick="saveEdit()"><i class="fa-solid fa-floppy-disk"></i> Simpan Perubahan</button>
+  </div>
+</div>
+
+<!-- MODAL KONFIRMASI -->
+<div class="modal-overlay" id="confirmOverlay"></div>
+<div class="modal confirm-modal" id="confirmModal">
+  <div class="modal-header">
+    <h3><i class="fa-solid fa-triangle-exclamation" style="color:var(--alpa)"></i> <span id="confirmTitle">Konfirmasi</span></h3>
+    <button class="modal-close" onclick="closeConfirm()"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="modal-body" style="padding:20px 22px">
+    <p id="confirmMsg" style="color:var(--text-secondary);font-size:14px;line-height:1.6"></p>
+  </div>
+  <div class="modal-footer">
+    <button class="btn-cancel" onclick="closeConfirm()">Batal</button>
+    <button class="btn-save" id="confirmOkBtn" style="background:var(--alpa)">
+      <i class="fa-solid fa-trash"></i> Hapus
+    </button>
+  </div>
+</div>
+
+<!-- MODAL CATATAN SISWA -->
+<div class="modal-overlay" id="noteOverlay" onclick="closeNote()"></div>
+<div class="modal" id="noteModal">
+  <div class="modal-header">
+    <h3><i class="fa-solid fa-note-sticky" style="color:var(--izin)"></i> Catatan Siswa</h3>
+    <button class="modal-close" onclick="closeNote()"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="modal-body" style="padding:20px 22px">
+    <p id="noteSiswaName" style="font-weight:700;margin-bottom:12px;color:var(--text-primary)"></p>
+    <textarea id="noteTextarea" placeholder="Tulis catatan untuk siswa ini..." style="width:100%;min-height:120px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);padding:12px;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;resize:vertical;outline:none;"></textarea>
+  </div>
+  <div class="modal-footer">
+    <button class="btn-cancel" onclick="closeNote()">Batal</button>
+    <button class="btn-save" onclick="saveNote()"><i class="fa-solid fa-floppy-disk"></i> Simpan Catatan</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
