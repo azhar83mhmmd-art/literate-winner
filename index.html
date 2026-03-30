@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="style.css" />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 
@@ -194,6 +196,10 @@
           <i class="fa-solid fa-magnifying-glass"></i>
           <input type="text" id="searchRiwayat" placeholder="Cari tanggal atau nama..." oninput="renderRiwayat()"/>
         </div>
+        <button class="btn-pdf" onclick="downloadPDFRiwayat()">
+          <i class="fa-solid fa-file-pdf"></i>
+          <span>Download PDF</span>
+        </button>
       </div>
     </div>
 
@@ -209,6 +215,10 @@
       </div>
       <div class="header-actions">
         <select class="select-month" id="filterBulan" onchange="renderRekap()"></select>
+        <button class="btn-pdf" onclick="downloadPDFRekap()">
+          <i class="fa-solid fa-file-pdf"></i>
+          <span>Download PDF</span>
+        </button>
       </div>
     </div>
 
@@ -346,9 +356,61 @@
   </div>
 </div>
 
+<!-- MODAL PDF SETTINGS -->
+<div class="modal-overlay" id="pdfOverlay" onclick="closePDFModal()"></div>
+<div class="modal pdf-modal" id="pdfModal">
+  <div class="modal-header">
+    <h3><i class="fa-solid fa-file-pdf" style="color:#ef4444"></i> Download PDF</h3>
+    <button class="modal-close" onclick="closePDFModal()"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="modal-body" style="padding:20px 22px">
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">Informasi ini akan tampil di header dokumen PDF</p>
+    <div class="pdf-form-group">
+      <label>Nama Sekolah</label>
+      <input type="text" id="pdfSekolah" placeholder="cth: SDN 01 Banjarmasin" />
+    </div>
+    <div class="pdf-form-group">
+      <label>Kelas / Rombel</label>
+      <input type="text" id="pdfKelas" placeholder="cth: Kelas 5A" />
+    </div>
+    <div class="pdf-form-group">
+      <label>Nama Wali Kelas</label>
+      <input type="text" id="pdfGuru" placeholder="cth: Ibu Siti Rahmah, S.Pd" />
+    </div>
+    <div class="pdf-form-group">
+      <label>Tahun Pelajaran</label>
+      <input type="text" id="pdfTahun" placeholder="cth: 2024/2025" />
+    </div>
+    <div class="pdf-type-select">
+      <div class="pdf-type-opt active" id="pdfTypeRekap" onclick="selectPDFType('rekap')">
+        <i class="fa-solid fa-chart-bar"></i>
+        <span>Rekap Bulanan</span>
+        <small>Semua siswa, 1 bulan</small>
+      </div>
+      <div class="pdf-type-opt" id="pdfTypeRiwayat" onclick="selectPDFType('riwayat')">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        <span>Riwayat Harian</span>
+        <small>Per tanggal lengkap</small>
+      </div>
+      <div class="pdf-type-opt" id="pdfTypeSemua" onclick="selectPDFType('semua')">
+        <i class="fa-solid fa-layer-group"></i>
+        <span>Semua Bulan</span>
+        <small>Rekap per bulan penuh</small>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn-cancel" onclick="closePDFModal()">Batal</button>
+    <button class="btn-save btn-pdf-go" onclick="generatePDF()">
+      <i class="fa-solid fa-file-arrow-down"></i> Buat & Download PDF
+    </button>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
 <script src="script.js"></script>
+<script src="ai.js"></script>
 </body>
 </html>

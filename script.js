@@ -1121,3 +1121,388 @@ function printAbsensi() {
 </html>`);
   win.document.close();
 }
+
+// ============================================
+//   PDF DOWNLOAD
+// ============================================
+let pdfTargetType = 'rekap';
+
+function downloadPDFRekap() {
+  selectPDFType('rekap');
+  openPDFModal();
+}
+function downloadPDFRiwayat() {
+  selectPDFType(riwayatView === 'bulanan' ? 'semua' : 'riwayat');
+  openPDFModal();
+}
+
+function selectPDFType(type) {
+  pdfTargetType = type;
+  ['rekap','riwayat','semua'].forEach(t => {
+    document.getElementById('pdfType' + t.charAt(0).toUpperCase() + t.slice(1))?.classList.toggle('active', t === type);
+  });
+}
+
+function openPDFModal() {
+  document.getElementById('pdfOverlay').classList.add('open');
+  document.getElementById('pdfModal').classList.add('open');
+}
+function closePDFModal() {
+  document.getElementById('pdfOverlay').classList.remove('open');
+  document.getElementById('pdfModal').classList.remove('open');
+}
+
+function getPDFMeta() {
+  return {
+    sekolah: document.getElementById('pdfSekolah').value.trim() || 'Nama Sekolah',
+    kelas:   document.getElementById('pdfKelas').value.trim()   || 'Kelas',
+    guru:    document.getElementById('pdfGuru').value.trim()    || 'Wali Kelas',
+    tahun:   document.getElementById('pdfTahun').value.trim()   || new Date().getFullYear() + '/' + (new Date().getFullYear()+1),
+  };
+}
+
+function generatePDF() {
+  const { jsPDF } = window.jspdf;
+  if (!jsPDF) { showToast('Library PDF belum siap, coba lagi.', 'error'); return; }
+
+  const meta = getPDFMeta();
+
+  if (pdfTargetType === 'rekap') generatePDFRekap(meta);
+  else if (pdfTargetType === 'riwayat') generatePDFHarian(meta);
+  else if (pdfTargetType === 'semua') generatePDFSemuaBulan(meta);
+
+  closePDFModal();
+}
+
+// ---- HELPERS ----
+function pdfHeader(doc, meta, title, subtitle) {
+  const pageW = doc.internal.pageSize.getWidth();
+
+  // Top bar
+  doc.setFillColor(15, 20, 30);
+  doc.rect(0, 0, pageW, 28, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.text(meta.sekolah.toUpperCase(), 14, 10);
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(160, 170, 190);
+  doc.text(`${meta.kelas}  ·  Wali Kelas: ${meta.guru}  ·  TP ${meta.tahun}`, 14, 17);
+
+  // Title block
+  doc.setTextColor(15, 20, 30);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(title, 14, 38);
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 110, 130);
+  doc.text(subtitle, 14, 45);
+
+  // Divider
+  doc.setDrawColor(220, 225, 235);
+  doc.setLineWidth(0.4);
+  doc.line(14, 49, pageW - 14, 49);
+
+  return 55; // Y cursor after header
+}
+
+function pdfFooter(doc) {
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const pages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFillColor(245, 247, 250);
+    doc.rect(0, pageH - 12, pageW, 12, 'F');
+    doc.setTextColor(150, 160, 175);
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`AbsenKelas · Dicetak: ${new Date().toLocaleString('id-ID')}`, 14, pageH - 4.5);
+    doc.text(`Halaman ${i} / ${pages}`, pageW - 14, pageH - 4.5, { align: 'right' });
+  }
+}
+
+function statusColor(status) {
+  if (status === 'Hadir') return [52, 211, 153];
+  if (status === 'Sakit') return [251, 146, 60];
+  if (status === 'Izin')  return [167, 139, 250];
+  return [248, 113, 113]; // Alpa
+}
+
+// ---- PDF REKAP BULANAN ----
+function generatePDFRekap(meta) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const data = getStorage();
+
+  const sel = document.getElementById('filterBulan');
+  const selectedMonth = sel?.value || '';
+  const [y, mo] = selectedMonth ? selectedMonth.split('-') : [new Date().getFullYear(), new Date().getMonth()+1];
+  const monthLabel = `${BULAN_ID[+mo-1]} ${y}`;
+
+  const keys = Object.keys(data).filter(k => !selectedMonth || getMonthKey(k) === selectedMonth).sort();
+
+  const totals = {};
+  STUDENTS.forEach(n => { totals[n] = { Hadir: 0, Sakit: 0, Izin: 0, Alpa: 0 }; });
+  keys.forEach(key => {
+    STUDENTS.forEach(n => {
+      const s = data[key].records[n] || 'Alpa';
+      totals[n][s]++;
+    });
+  });
+
+  let yPos = pdfHeader(doc, meta, `REKAP KEHADIRAN — ${monthLabel.toUpperCase()}`, `${keys.length} hari aktif · ${STUDENTS.length} siswa`);
+
+  // Summary boxes
+  let grandH=0, grandS=0, grandI=0, grandA=0;
+  STUDENTS.forEach(n => { grandH+=totals[n].Hadir; grandS+=totals[n].Sakit; grandI+=totals[n].Izin; grandA+=totals[n].Alpa; });
+  const grandT = grandH+grandS+grandI+grandA;
+
+  const boxes = [
+    { label: 'Total Hadir', val: grandH, pct: grandT ? ((grandH/grandT)*100).toFixed(1) : '0', color: [52,211,153] },
+    { label: 'Total Sakit', val: grandS, pct: grandT ? ((grandS/grandT)*100).toFixed(1) : '0', color: [251,146,60] },
+    { label: 'Total Izin',  val: grandI, pct: grandT ? ((grandI/grandT)*100).toFixed(1) : '0', color: [167,139,250] },
+    { label: 'Total Alpa',  val: grandA, pct: grandT ? ((grandA/grandT)*100).toFixed(1) : '0', color: [248,113,113] },
+  ];
+  const pageW = doc.internal.pageSize.getWidth();
+  const boxW = (pageW - 28 - 9) / 4;
+  boxes.forEach((b, i) => {
+    const bx = 14 + i * (boxW + 3);
+    doc.setFillColor(245, 247, 250);
+    doc.roundedRect(bx, yPos, boxW, 18, 2, 2, 'F');
+    doc.setFillColor(...b.color);
+    doc.roundedRect(bx, yPos, 3, 18, 1, 1, 'F');
+    doc.setTextColor(...b.color);
+    doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+    doc.text(String(b.val), bx + 6, yPos + 10);
+    doc.setTextColor(80, 90, 110);
+    doc.setFontSize(7); doc.setFont('helvetica', 'normal');
+    doc.text(b.label, bx + 6, yPos + 15);
+    doc.setTextColor(150, 160, 175);
+    doc.text(`${b.pct}%`, bx + boxW - 4, yPos + 15, { align: 'right' });
+  });
+  yPos += 24;
+
+  // Main table
+  const tableBody = STUDENTS.map((name, i) => {
+    const t = totals[name];
+    const total = t.Hadir + t.Sakit + t.Izin + t.Alpa;
+    const pct = total ? ((t.Hadir / total) * 100).toFixed(0) : '0';
+    return [i+1, name, t.Hadir, t.Sakit, t.Izin, t.Alpa, total, `${pct}%`];
+  });
+
+  doc.autoTable({
+    startY: yPos,
+    head: [['No', 'Nama Siswa', 'Hadir', 'Sakit', 'Izin', 'Alpa', 'Total', '% Hadir']],
+    body: tableBody,
+    theme: 'grid',
+    styles: { fontSize: 9, cellPadding: 3, font: 'helvetica', textColor: [30, 35, 50] },
+    headStyles: { fillColor: [15, 20, 30], textColor: [255,255,255], fontStyle: 'bold', fontSize: 8 },
+    alternateRowStyles: { fillColor: [248, 249, 252] },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      2: { halign: 'center', textColor: [52,211,153], fontStyle: 'bold' },
+      3: { halign: 'center', textColor: [251,146,60], fontStyle: 'bold' },
+      4: { halign: 'center', textColor: [167,139,250], fontStyle: 'bold' },
+      5: { halign: 'center', textColor: [248,113,113], fontStyle: 'bold' },
+      6: { halign: 'center' },
+      7: { halign: 'center', fontStyle: 'bold' },
+    },
+    didDrawCell: (d) => {
+      if (d.section === 'body' && d.column.index === 7) {
+        const pct = parseFloat(d.cell.text[0]);
+        const color = pct >= 75 ? [52,211,153] : pct >= 50 ? [251,146,60] : [248,113,113];
+        doc.setTextColor(...color);
+      }
+    },
+    margin: { left: 14, right: 14 },
+  });
+
+  pdfFooter(doc);
+  doc.save(`Rekap_${meta.kelas.replace(/\s/g,'_')}_${monthLabel.replace(/\s/g,'_')}.pdf`);
+  showToast('PDF Rekap berhasil didownload! 📄', 'success');
+}
+
+// ---- PDF RIWAYAT HARIAN ----
+function generatePDFHarian(meta) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const data = getStorage();
+  const keys = Object.keys(data).sort().reverse();
+
+  if (keys.length === 0) { showToast('Tidak ada data untuk di-export.', 'error'); return; }
+
+  const now = new Date();
+  let yPos = pdfHeader(doc, meta,
+    'RIWAYAT ABSENSI HARIAN',
+    `${keys.length} hari tersimpan · ${STUDENTS.length} siswa · Per ${now.getDate()} ${BULAN_ID[now.getMonth()]} ${now.getFullYear()}`
+  );
+
+  // Build wide table: Nama | Tgl1 | Tgl2 | ... (max ~20 per page)
+  const CHUNK = 18;
+  const chunks = [];
+  for (let i = 0; i < keys.length; i += CHUNK) chunks.push(keys.slice(i, i + CHUNK));
+
+  chunks.forEach((chunkKeys, ci) => {
+    if (ci > 0) {
+      doc.addPage();
+      yPos = pdfHeader(doc, meta, 'RIWAYAT ABSENSI HARIAN (lanjutan)', `Halaman ${ci+1}`);
+    }
+
+    const headRow = ['No', 'Nama Siswa', ...chunkKeys.map(k => {
+      const [yr, mm, dd] = k.split('-');
+      return `${dd}/${mm}`;
+    })];
+
+    const bodyRows = STUDENTS.map((name, i) => {
+      const cells = chunkKeys.map(key => data[key]?.records[name] || 'A');
+      // Abbreviate
+      const abbr = { Hadir: 'H', Sakit: 'S', Izin: 'I', Alpa: 'A' };
+      return [i+1, name, ...cells.map(s => abbr[s] || s[0])];
+    });
+
+    doc.autoTable({
+      startY: yPos,
+      head: [headRow],
+      body: bodyRows,
+      theme: 'grid',
+      styles: { fontSize: 7.5, cellPadding: 2, font: 'helvetica', halign: 'center', textColor: [30,35,50] },
+      headStyles: { fillColor: [15,20,30], textColor: [255,255,255], fontStyle: 'bold', fontSize: 7 },
+      alternateRowStyles: { fillColor: [248,249,252] },
+      columnStyles: {
+        0: { cellWidth: 8, halign: 'center' },
+        1: { cellWidth: 42, halign: 'left' },
+      },
+      didDrawCell: (d) => {
+        if (d.section !== 'body' || d.column.index < 2) return;
+        const val = d.cell.text[0];
+        const colorMap = { H: [52,211,153], S: [251,146,60], I: [167,139,250], A: [248,113,113] };
+        if (colorMap[val]) {
+          doc.setTextColor(...colorMap[val]);
+          doc.setFont('helvetica', 'bold');
+        }
+      },
+      margin: { left: 10, right: 10 },
+    });
+  });
+
+  // Legend
+  const lastY = doc.lastAutoTable.finalY + 6;
+  const pageW = doc.internal.pageSize.getWidth();
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(120,130,145);
+  doc.text('Keterangan: H = Hadir  ·  S = Sakit  ·  I = Izin  ·  A = Alpa', 10, lastY);
+
+  pdfFooter(doc);
+  doc.save(`Riwayat_Harian_${meta.kelas.replace(/\s/g,'_')}.pdf`);
+  showToast('PDF Riwayat Harian berhasil didownload! 📄', 'success');
+}
+
+// ---- PDF SEMUA BULAN ----
+function generatePDFSemuaBulan(meta) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const data = getStorage();
+  const allKeys = Object.keys(data).sort();
+
+  if (allKeys.length === 0) { showToast('Tidak ada data untuk di-export.', 'error'); return; }
+
+  // Group by month
+  const byMonth = {};
+  allKeys.forEach(key => {
+    const mk = getMonthKey(key);
+    if (!byMonth[mk]) byMonth[mk] = [];
+    byMonth[mk].push(key);
+  });
+  const monthKeys = Object.keys(byMonth).sort().reverse();
+
+  let firstPage = true;
+  monthKeys.forEach(mk => {
+    const dayKeys = byMonth[mk].sort();
+    const [y, mo] = mk.split('-');
+    const monthLabel = `${BULAN_ID[+mo-1]} ${y}`;
+
+    const totals = {};
+    STUDENTS.forEach(n => { totals[n] = { Hadir: 0, Sakit: 0, Izin: 0, Alpa: 0 }; });
+    dayKeys.forEach(key => {
+      STUDENTS.forEach(n => {
+        const s = data[key].records[n] || 'Alpa';
+        totals[n][s]++;
+      });
+    });
+
+    if (!firstPage) doc.addPage();
+    firstPage = false;
+
+    let yPos = pdfHeader(doc, meta,
+      `REKAP KEHADIRAN — ${monthLabel.toUpperCase()}`,
+      `${dayKeys.length} hari aktif · ${STUDENTS.length} siswa`
+    );
+
+    // Summary row
+    let gH=0, gS=0, gI=0, gA=0;
+    STUDENTS.forEach(n => { gH+=totals[n].Hadir; gS+=totals[n].Sakit; gI+=totals[n].Izin; gA+=totals[n].Alpa; });
+    const gT = gH+gS+gI+gA;
+    const pageW = doc.internal.pageSize.getWidth();
+    const boxW = (pageW - 28 - 9) / 4;
+    const sumBoxes = [
+      { label:'Hadir', val: gH, pct: gT?((gH/gT)*100).toFixed(0):'0', color:[52,211,153] },
+      { label:'Sakit', val: gS, pct: gT?((gS/gT)*100).toFixed(0):'0', color:[251,146,60] },
+      { label:'Izin',  val: gI, pct: gT?((gI/gT)*100).toFixed(0):'0', color:[167,139,250] },
+      { label:'Alpa',  val: gA, pct: gT?((gA/gT)*100).toFixed(0):'0', color:[248,113,113] },
+    ];
+    sumBoxes.forEach((b, i) => {
+      const bx = 14 + i * (boxW + 3);
+      doc.setFillColor(245,247,250); doc.roundedRect(bx, yPos, boxW, 16, 2, 2, 'F');
+      doc.setFillColor(...b.color); doc.roundedRect(bx, yPos, 3, 16, 1, 1, 'F');
+      doc.setTextColor(...b.color); doc.setFontSize(14); doc.setFont('helvetica','bold');
+      doc.text(String(b.val), bx+6, yPos+9);
+      doc.setTextColor(80,90,110); doc.setFontSize(7); doc.setFont('helvetica','normal');
+      doc.text(b.label, bx+6, yPos+14);
+      doc.setTextColor(150,160,175);
+      doc.text(`${b.pct}%`, bx+boxW-4, yPos+14, {align:'right'});
+    });
+    yPos += 22;
+
+    const tableBody = STUDENTS.map((name, i) => {
+      const t = totals[name];
+      const total = t.Hadir+t.Sakit+t.Izin+t.Alpa;
+      const pct = total ? ((t.Hadir/total)*100).toFixed(0) : '0';
+      return [i+1, name, t.Hadir, t.Sakit, t.Izin, t.Alpa, total, `${pct}%`];
+    });
+
+    doc.autoTable({
+      startY: yPos,
+      head: [['No','Nama Siswa','Hadir','Sakit','Izin','Alpa','Total','% Hadir']],
+      body: tableBody,
+      theme: 'grid',
+      styles: { fontSize: 8.5, cellPadding: 2.5, font:'helvetica', textColor:[30,35,50] },
+      headStyles: { fillColor:[15,20,30], textColor:[255,255,255], fontStyle:'bold', fontSize:7.5 },
+      alternateRowStyles: { fillColor:[248,249,252] },
+      columnStyles: {
+        0: { cellWidth:10, halign:'center' },
+        2: { halign:'center', textColor:[52,211,153], fontStyle:'bold' },
+        3: { halign:'center', textColor:[251,146,60], fontStyle:'bold' },
+        4: { halign:'center', textColor:[167,139,250], fontStyle:'bold' },
+        5: { halign:'center', textColor:[248,113,113], fontStyle:'bold' },
+        6: { halign:'center' },
+        7: { halign:'center', fontStyle:'bold' },
+      },
+      didDrawCell: (d) => {
+        if (d.section === 'body' && d.column.index === 7) {
+          const pct = parseFloat(d.cell.text[0]);
+          doc.setTextColor(...(pct>=75?[52,211,153]:pct>=50?[251,146,60]:[248,113,113]));
+        }
+      },
+      margin: { left:14, right:14 },
+    });
+  });
+
+  pdfFooter(doc);
+  doc.save(`Rekap_Semua_Bulan_${meta.kelas.replace(/\s/g,'_')}.pdf`);
+  showToast('PDF Semua Bulan berhasil didownload! 📄', 'success');
+}
