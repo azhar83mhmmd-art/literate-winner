@@ -182,6 +182,14 @@
         <p class="section-sub">Data absensi semua tanggal</p>
       </div>
       <div class="header-actions">
+        <div class="riwayat-view-toggle">
+          <button class="view-toggle-btn active" id="viewHarian" onclick="switchRiwayatView('harian')">
+            <i class="fa-solid fa-calendar-day"></i> Per Hari
+          </button>
+          <button class="view-toggle-btn" id="viewBulanan" onclick="switchRiwayatView('bulanan')">
+            <i class="fa-solid fa-calendar-alt"></i> Per Bulan
+          </button>
+        </div>
         <div class="search-wrap">
           <i class="fa-solid fa-magnifying-glass"></i>
           <input type="text" id="searchRiwayat" placeholder="Cari tanggal atau nama..." oninput="renderRiwayat()"/>
@@ -222,12 +230,16 @@
     <div class="rekap-card">
       <div class="card-header-row">
         <h2><i class="fa-solid fa-table"></i> Detail Per Siswa</h2>
-        <input type="text" class="search-inline" id="searchRekap" placeholder="Cari siswa..." oninput="renderRekap()"/>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="rekap-hint"><i class="fa-solid fa-circle-info"></i> Klik baris untuk detail harian</span>
+          <input type="text" class="search-inline" id="searchRekap" placeholder="Cari siswa..." oninput="renderRekap()"/>
+        </div>
       </div>
       <div class="table-wrap">
         <table class="rekap-table" id="rekapTable">
           <thead>
             <tr>
+              <th style="width:32px"></th>
               <th>No</th>
               <th>Nama Siswa</th>
               <th><span class="badge-th hadir">Hadir</span></th>

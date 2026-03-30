@@ -295,7 +295,21 @@ function submitAbsensi() {
 // ============================================
 //   RIWAYAT
 // ============================================
+let riwayatView = 'harian'; // 'harian' | 'bulanan'
+
+function switchRiwayatView(view) {
+  riwayatView = view;
+  document.getElementById('viewHarian').classList.toggle('active', view === 'harian');
+  document.getElementById('viewBulanan').classList.toggle('active', view === 'bulanan');
+  renderRiwayat();
+}
+
 function renderRiwayat() {
+  if (riwayatView === 'bulanan') renderRiwayatBulanan();
+  else renderRiwayatHarian();
+}
+
+function renderRiwayatHarian() {
   const data = getStorage();
   const search = (document.getElementById('searchRiwayat')?.value || '').toLowerCase();
   const container = document.getElementById('riwayatList');
@@ -313,6 +327,7 @@ function renderRiwayat() {
     return;
   }
 
+  let rendered = 0;
   keys.forEach(key => {
     const entry = data[key];
     const dateStr = formatDate(key);
@@ -322,6 +337,7 @@ function renderRiwayat() {
         !STUDENTS.some(n => n.toLowerCase().includes(search))) return;
 
     const counts = countStatuses(entry.records);
+    rendered++;
 
     const div = document.createElement('div');
     div.className = 'riwayat-day';
@@ -364,11 +380,137 @@ function renderRiwayat() {
     `;
     container.appendChild(div);
   });
+
+  if (rendered === 0) {
+    container.innerHTML = `<div class="empty-state"><i class="fa-solid fa-magnifying-glass"></i><h3>Tidak ada hasil ditemukan</h3><p>Coba kata kunci lain</p></div>`;
+  }
 }
 
-function toggleRiwayat(header) {
+function renderRiwayatBulanan() {
+  const data = getStorage();
+  const search = (document.getElementById('searchRiwayat')?.value || '').toLowerCase();
+  const container = document.getElementById('riwayatList');
+  container.innerHTML = '';
+
+  const allKeys = Object.keys(data).sort().reverse();
+
+  if (allKeys.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <i class="fa-solid fa-calendar-xmark"></i>
+        <h3>Belum ada data absensi</h3>
+        <p>Mulai isi absensi di tab "Absensi Hari Ini"</p>
+      </div>`;
+    return;
+  }
+
+  // Group keys by month
+  const byMonth = {};
+  allKeys.forEach(key => {
+    const mk = getMonthKey(key);
+    if (!byMonth[mk]) byMonth[mk] = [];
+    byMonth[mk].push(key);
+  });
+
+  const monthKeys = Object.keys(byMonth).sort().reverse();
+
+  monthKeys.forEach(mk => {
+    const dayKeys = byMonth[mk].sort();
+    const [y, mo] = mk.split('-');
+    const monthLabel = `${BULAN_ID[+mo-1]} ${y}`;
+    const totalDays = dayKeys.length;
+
+    // Aggregate per student for this month
+    const totals = {};
+    STUDENTS.forEach(n => { totals[n] = { Hadir: 0, Sakit: 0, Izin: 0, Alpa: 0 }; });
+    dayKeys.forEach(key => {
+      STUDENTS.forEach(n => {
+        const s = data[key].records[n] || 'Alpa';
+        totals[n][s]++;
+      });
+    });
+
+    // Month-level grand totals
+    let gtH=0, gtS=0, gtI=0, gtA=0;
+    STUDENTS.forEach(n => { gtH+=totals[n].Hadir; gtS+=totals[n].Sakit; gtI+=totals[n].Izin; gtA+=totals[n].Alpa; });
+
+    // Filter students
+    const filteredStudents = STUDENTS.filter(n => !search || n.toLowerCase().includes(search));
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'riwayat-month-block';
+
+    wrapper.innerHTML = `
+      <div class="riwayat-month-header" onclick="toggleMonthBlock(this)">
+        <div class="riwayat-date-info">
+          <div class="riwayat-date-icon" style="background:var(--accent-blue-glow);color:var(--accent-blue)"><i class="fa-solid fa-calendar-alt"></i></div>
+          <div>
+            <div class="riwayat-date-title">${monthLabel}</div>
+            <div class="riwayat-date-sub">${totalDays} hari · ${STUDENTS.length} siswa</div>
+          </div>
+        </div>
+        <div class="riwayat-badges">
+          <span class="badge hadir"><i class="fa-solid fa-circle-check"></i> ${gtH} Hadir</span>
+          <span class="badge sakit"><i class="fa-solid fa-heart-pulse"></i> ${gtS} Sakit</span>
+          <span class="badge izin"><i class="fa-solid fa-envelope"></i> ${gtI} Izin</span>
+          <span class="badge alpa"><i class="fa-solid fa-circle-xmark"></i> ${gtA} Alpa</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <span class="expand-icon month-chevron"><i class="fa-solid fa-chevron-right"></i></span>
+        </div>
+      </div>
+      <div class="riwayat-month-body">
+        <div class="table-wrap">
+          <table class="rekap-table">
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>Nama Siswa</th>
+                <th><span class="badge-th hadir">Hadir</span></th>
+                <th><span class="badge-th sakit">Sakit</span></th>
+                <th><span class="badge-th izin">Izin</span></th>
+                <th><span class="badge-th alpa">Alpa</span></th>
+                <th>Total</th>
+                <th>% Hadir</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredStudents.map((name, i) => {
+                const t = totals[name];
+                const total = t.Hadir + t.Sakit + t.Izin + t.Alpa;
+                const pct = total ? ((t.Hadir / total) * 100) : 0;
+                const fillClass = pct >= 75 ? '' : pct >= 50 ? 'mid' : 'low';
+                return `<tr>
+                  <td><div class="rank-num">${i+1}</div></td>
+                  <td style="font-weight:600">${name}</td>
+                  <td><span class="td-num hadir">${t.Hadir}</span></td>
+                  <td><span class="td-num sakit">${t.Sakit}</span></td>
+                  <td><span class="td-num izin">${t.Izin}</span></td>
+                  <td><span class="td-num alpa">${t.Alpa}</span></td>
+                  <td><span class="td-num" style="color:var(--text-secondary)">${total}</span></td>
+                  <td>
+                    <div class="pct-bar-wrap">
+                      <div class="pct-bar"><div class="pct-fill ${fillClass}" style="width:${pct}%"></div></div>
+                      <span class="pct-text" style="color:${pct>=75?'var(--hadir)':pct>=50?'var(--sakit)':'var(--alpa)'}">${pct.toFixed(0)}%</span>
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    container.appendChild(wrapper);
+  });
+}
+
+function toggleMonthBlock(header) {
   const body = header.nextElementSibling;
-  body.classList.toggle('open');
+  const chevron = header.querySelector('.month-chevron');
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  if (chevron) chevron.classList.toggle('rotated', !isOpen);
 }
 
 function deleteDay(key) {
@@ -489,7 +631,7 @@ function renderRekap() {
   const data = getStorage();
 
   // Filter by month
-  const keys = Object.keys(data).filter(k => !selectedMonth || getMonthKey(k) === selectedMonth);
+  const keys = Object.keys(data).filter(k => !selectedMonth || getMonthKey(k) === selectedMonth).sort();
   const totalDays = keys.length;
 
   // Aggregate per student
@@ -549,7 +691,7 @@ function renderRekap() {
   const filtered = STUDENTS.filter(n => !search || n.toLowerCase().includes(search));
 
   if (totalDays === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 40px; color: var(--text-muted);">Belum ada data untuk bulan ini.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-muted);">Belum ada data untuk bulan ini.</td></tr>`;
     return;
   }
 
@@ -557,11 +699,28 @@ function renderRekap() {
     const t = totals[name];
     const total = t.Hadir + t.Sakit + t.Izin + t.Alpa;
     const pct = total ? ((t.Hadir / total) * 100) : 0;
-    const pctClass = pct >= 75 ? 'high' : pct >= 50 ? 'mid' : 'low';
     const fillClass = pct >= 75 ? '' : pct >= 50 ? 'mid' : 'low';
+    const rowId = `rekap-detail-${i}`;
+
+    // Build daily detail rows for this student
+    const dailyRows = keys.map(key => {
+      const s = data[key].records[name] || 'Alpa';
+      return `<tr class="rekap-detail-row">
+        <td colspan="3" style="padding-left:56px;color:var(--text-muted);font-size:12px;font-family:'DM Mono',monospace">${formatDateShort(key)}</td>
+        <td colspan="3" style="font-size:12px;color:var(--text-secondary)">${formatDate(key).split(',')[0]}</td>
+        <td colspan="3"><span class="badge ${s.toLowerCase()}" style="font-size:11px">${s}</span></td>
+      </tr>`;
+    }).join('');
 
     const tr = document.createElement('tr');
+    tr.className = 'rekap-main-row';
+    tr.setAttribute('data-row', rowId);
+    tr.style.cursor = 'pointer';
+    tr.onclick = function() { toggleRekapDetail(rowId, this); };
     tr.innerHTML = `
+      <td style="width:32px;text-align:center">
+        <span class="expand-icon" id="icon-${rowId}"><i class="fa-solid fa-chevron-right"></i></span>
+      </td>
       <td><div class="rank-num">${i+1}</div></td>
       <td style="font-weight:600">${name}</td>
       <td><span class="td-num hadir">${t.Hadir}</span></td>
@@ -579,7 +738,47 @@ function renderRekap() {
       </td>
     `;
     tbody.appendChild(tr);
+
+    // Detail container row
+    const detailTr = document.createElement('tr');
+    detailTr.id = rowId;
+    detailTr.className = 'rekap-detail-container';
+    detailTr.innerHTML = `
+      <td colspan="9" style="padding:0">
+        <div class="rekap-detail-inner">
+          <table class="rekap-daily-table">
+            <thead>
+              <tr>
+                <th style="width:110px">Tanggal</th>
+                <th style="width:80px">Hari</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${keys.map(key => {
+                const s = data[key].records[name] || 'Alpa';
+                return `<tr>
+                  <td style="font-family:'DM Mono',monospace;font-size:12px">${formatDateShort(key)}</td>
+                  <td style="color:var(--text-muted);font-size:12px">${formatDate(key).split(',')[0]}</td>
+                  <td><span class="badge ${s.toLowerCase()}">${s}</span></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(detailTr);
   });
+}
+
+function toggleRekapDetail(rowId, trEl) {
+  const detailTr = document.getElementById(rowId);
+  const icon = document.getElementById('icon-' + rowId);
+  const isOpen = detailTr.classList.contains('open');
+  detailTr.classList.toggle('open', !isOpen);
+  if (icon) icon.classList.toggle('rotated', !isOpen);
+  trEl.classList.toggle('row-expanded', !isOpen);
 }
 
 function renderDonut(counts, total) {
