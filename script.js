@@ -104,6 +104,14 @@ document.addEventListener('DOMContentLoaded', () => {
   populateMonthFilter();
   updateGenderCount();
   setInterval(updateDateDisplay, 30000);
+
+  // Re-render holiday banner & session panel setiap 30 detik (update real-time)
+  setInterval(() => {
+    if (window.HariLibur) {
+      window.HariLibur.renderHolidayBanner();
+      window.HariLibur.renderSessionPanel();
+    }
+  }, 30000);
 });
 
 function updateDateDisplay() {
@@ -243,45 +251,95 @@ function updateQuickStats() {
 }
 
 function checkTodayLocked() {
-  const data = getStorage();
-  const key = todayKey();
+  const data   = getStorage();
+  const key    = todayKey();
   const locked = !!data[key];
 
   const notice = document.getElementById('lockedNotice');
   const pill   = document.getElementById('statusPill');
   const btn    = document.getElementById('submitBtn');
 
+  // Cek hari libur terlebih dahulu
+  const isLibur = window.HariLibur ? window.HariLibur.cekHariIniLibur().isLibur : false;
+
   if (locked) {
-    notice.style.display = 'flex';
-    pill.textContent = '✓ Absensi Tersimpan';
-    pill.className = 'status-pill done';
-    btn.disabled = true;
+    if (notice) notice.style.display = 'flex';
+    if (pill)  { pill.textContent = '✓ Absensi Tersimpan'; pill.className = 'status-pill done'; }
+    if (btn)   btn.disabled = true;
+
+    // Tampilkan info sesi jika ada
+    const entry = data[key];
+    if (entry.session && notice) {
+      const existingExtra = document.getElementById('lockedSessionInfo');
+      if (!existingExtra) {
+        const extra = document.createElement('div');
+        extra.id = 'lockedSessionInfo';
+        extra.style.cssText = 'margin-top:6px;font-size:11.5px;color:var(--text-muted)';
+        extra.innerHTML = '<i class="fa-solid fa-users" style="color:var(--accent-blue);margin-right:4px"></i>' +
+          'Sesi: <code style="font-family:DM Mono,monospace;font-size:11px;color:var(--accent-blue)">' +
+          entry.session.session_absensi_id + '</code>' +
+          ' &nbsp;·&nbsp; Oleh: <strong>' + (entry.session.submittedBy || '—') + '</strong>' +
+          ' &nbsp;·&nbsp; ' + entry.session.userCount + ' operator';
+        notice.appendChild(extra);
+      }
+    }
+
     renderStudentList(true, data[key].records);
+  } else if (isLibur) {
+    if (notice) notice.style.display = 'none';
+    // pill & btn dihandle oleh HariLibur.renderHolidayBanner()
+    renderStudentList(false);
   } else {
-    notice.style.display = 'none';
-    pill.textContent = '● Absensi Terbuka';
-    pill.className = 'status-pill open';
-    btn.disabled = false;
+    if (notice) notice.style.display = 'none';
+    if (pill)  { pill.textContent = '● Absensi Terbuka'; pill.className = 'status-pill open'; }
+    if (btn)   btn.disabled = false;
     renderStudentList(false);
   }
   updateQuickStats();
 }
 
 function submitAbsensi() {
+  // ============================================
+  //   VALIDASI BACKEND (Hari Libur + Duplikat)
+  // ============================================
+  if (window.HariLibur) {
+    const validasi = window.HariLibur.validateSubmitAbsensi();
+    if (!validasi.ok) {
+      showToast('❌ ' + validasi.message, 'error');
+      return;
+    }
+  }
+
   const unfilled = STUDENTS.filter(n => !currentSelections[n]);
   if (unfilled.length > 0) {
     showToast(`${unfilled.length} siswa belum diisi!`, 'error');
     return;
   }
 
-  const key = todayKey();
-  const now = new Date();
-  const data = getStorage();
+  const key     = todayKey();
+  const now     = new Date();
+  const data    = getStorage();
+
+  // Ambil info sesi aktif jika ada
+  let sessionMeta = null;
+  if (window.HariLibur) {
+    const sInfo = window.HariLibur.getSessionInfo();
+    const uName = window.HariLibur.getCurrentUser();
+    if (sInfo) {
+      sessionMeta = {
+        session_absensi_id: sInfo.sessionId,
+        userCount:          sInfo.userCount,
+        submittedBy:        uName || 'Anonim',
+        users:              sInfo.users
+      };
+    }
+  }
 
   data[key] = {
-    date: key,
-    savedAt: now.toISOString(),
-    records: { ...currentSelections }
+    date:     key,
+    savedAt:  now.toISOString(),
+    records:  { ...currentSelections },
+    session:  sessionMeta
   };
   setStorage(data);
 
@@ -347,7 +405,7 @@ function renderRiwayatHarian() {
           <div class="riwayat-date-icon"><i class="fa-solid fa-calendar-day"></i></div>
           <div>
             <div class="riwayat-date-title">${dateStr}</div>
-            <div class="riwayat-date-sub">Disimpan pukul ${timeStr} · ${STUDENTS.length} siswa</div>
+            <div class="riwayat-date-sub">Disimpan pukul ${timeStr} · ${STUDENTS.length} siswa${entry.session ? ` · <i class="fa-solid fa-users" style="color:var(--accent-blue);font-size:10px"></i> ${entry.session.userCount} operator` : ''}</div>
           </div>
         </div>
         <div class="riwayat-badges">

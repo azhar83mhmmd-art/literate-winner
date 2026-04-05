@@ -22,10 +22,10 @@
   //   DATA MBG — ROTASI SESI
   // ============================================
   const SESI_MBG = [
-    { sesi: 1, anggota: ['Nazzua Naila', 'Andina', 'Yuliana Rahmah', 'Aderia', 'Muhammad Raihan Alfarezy'] },
-    { sesi: 2, anggota: ['Muhammad Azhar', 'Muhammad Jurifky Alfarizi', 'Muhammad Tajudin', 'Raihan Ramadani'] },
-    { sesi: 3, anggota: ['Nur Aulia', 'Aspia Nabila', 'Sauqi Rohman', 'Ahmad Nauval', 'Hatipah', 'Hayattul Husna'] },
-    { sesi: 4, anggota: ['Nikmatul Husna', 'Rihadatul Asyifa Nuregia', 'Amelia Rahmah', 'Ani Zastia', 'Muhammad Rappi', 'Muhammad Rudianor'] },
+    { sesi: 1, anggota: ['Muhammad Azhar', 'Muhammad Jurifky Alfarizi', 'Muhammad Tajudin', 'Raihan Ramadani'] },
+    { sesi: 2, anggota: ['Nur Aulia', 'Aspia Nabila', 'Sauqi Rohman', 'Ahmad Nauval', 'Hatipah', 'Hayattul Husna'] },
+    { sesi: 3, anggota: ['Nikmatul Husna', 'Rihadatul Asyifa Nuregia', 'Amelia Rahmah', 'Ani Zastia', 'Muhammad Rappi', 'Muhammad Rudianor'] },
+    { sesi: 4, anggota: ['Nazzlia Naila', 'Andina', 'Yuliana Rahmah', 'Aderia', 'Muhammad Raihan Alfarezy'] },
   ];
 
   // Titik referensi: 2025-01-06 (Senin) = Sesi 1, hari ke-0
@@ -59,12 +59,20 @@
     return ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][idx];
   }
 
-  // Hitung hari kerja (non-Minggu) dari ref ke tanggal t
+  // Hitung hari kerja (non-Minggu & non-libur nasional) dari ref ke tanggal t
   function countWorkdays(from, to) {
     let count = 0;
     const cur = new Date(from);
     while (cur < to) {
-      if (cur.getDay() !== 0) count++;
+      const dayOfWeek = cur.getDay();
+      const dateKey = cur.getFullYear() + '-' +
+                      String(cur.getMonth() + 1).padStart(2, '0') + '-' +
+                      String(cur.getDate()).padStart(2, '0');
+      // Lewati Minggu & hari libur nasional (jika HariLibur tersedia)
+      const isHoliday = window.HariLibur
+        ? window.HariLibur.cekHariLibur(dateKey).isLibur
+        : dayOfWeek === 0;
+      if (!isHoliday) count++;
       cur.setDate(cur.getDate() + 1);
     }
     return count;
@@ -99,56 +107,73 @@
     if (!container) return;
 
     const todayIdx = hariIni();
-    const today = todayNoTime();
+    const today    = todayNoTime();
+
+    // Cek hari libur nasional
+    const todayKey = today.getFullYear() + '-' +
+                     String(today.getMonth() + 1).padStart(2, '0') + '-' +
+                     String(today.getDate()).padStart(2, '0');
+    const liburInfo = window.HariLibur
+      ? window.HariLibur.cekHariLibur(todayKey)
+      : { isLibur: todayIdx === 0, alasan: 'Hari Minggu', tipe: 'minggu' };
 
     // Get today's absent students from attendance
     let absentToday = [];
     try {
       const storage = JSON.parse(localStorage.getItem('absenKelas') || '{}');
-      const key = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-      const dayData = storage[key];
+      const dayData = storage[todayKey];
       if (dayData && dayData.records) {
         absentToday = Object.entries(dayData.records)
-          .filter(([,s]) => s !== 'Hadir')
+          .filter(([, s]) => s !== 'Hadir')
           .map(([n]) => n);
       }
-    } catch(e) {}
+    } catch (e) {}
 
     let html = '';
 
     // Today's highlight card
-    if (todayIdx === 0) {
-      html += `<div class="mgmt-info-card">
-        <div class="mgmt-info-icon"><i class="fa-solid fa-calendar-xmark"></i></div>
-        <div><strong>Hari Minggu</strong> — Tidak ada jadwal piket hari ini.</div>
+    if (liburInfo.isLibur) {
+      const icon = liburInfo.tipe === 'minggu' ? 'fa-calendar-xmark' : 'fa-moon';
+      html += `<div class="mgmt-info-card libur-card">
+        <div class="mgmt-info-icon" style="background:rgba(248,113,113,0.1);color:#f87171"><i class="fa-solid ${icon}"></i></div>
+        <div>
+          <strong style="color:#f87171">🔴 Hari Libur — ${liburInfo.alasan}</strong>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted)">Tidak ada jadwal piket hari ini. Jadwal dilanjutkan hari aktif berikutnya.</p>
+        </div>
       </div>`;
     } else {
       const jadwalHariIni = JADWAL_PIKET[todayIdx];
-      const warningNames = jadwalHariIni.anggota.filter(n => absentToday.includes(n));
-
-      html += `<div class="mgmt-today-card">
-        <div class="mgmt-today-header">
-          <div class="mgmt-today-icon"><i class="fa-solid fa-broom"></i></div>
-          <div>
-            <div class="mgmt-today-title">Petugas Piket Hari Ini</div>
-            <div class="mgmt-today-sub">${jadwalHariIni.hari}, ${today.getDate()} ${['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][today.getMonth()]} ${today.getFullYear()}</div>
+      if (!jadwalHariIni) {
+        html += `<div class="mgmt-info-card">
+          <div class="mgmt-info-icon"><i class="fa-solid fa-calendar-xmark"></i></div>
+          <div><strong>Tidak ada jadwal piket hari ini.</strong></div>
+        </div>`;
+      } else {
+        const warningNames = jadwalHariIni.anggota.filter(n => absentToday.includes(n));
+        html += `<div class="mgmt-today-card">
+          <div class="mgmt-today-header">
+            <div class="mgmt-today-icon"><i class="fa-solid fa-broom"></i></div>
+            <div>
+              <div class="mgmt-today-title">Petugas Piket Hari Ini</div>
+              <div class="mgmt-today-sub">${jadwalHariIni.hari}, ${today.getDate()} ${['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'][today.getMonth()]} ${today.getFullYear()}</div>
+            </div>
           </div>
-        </div>
-        <div class="mgmt-today-members">
-          ${jadwalHariIni.anggota.map(n => {
-            const absent = absentToday.includes(n);
-            return `<div class="mgmt-member-chip ${absent ? 'absent' : ''}">
-              <i class="fa-solid ${absent ? 'fa-circle-xmark' : 'fa-circle-check'}"></i>
-              ${n}
-              ${absent ? '<span class="absent-badge">Tidak Hadir</span>' : ''}
-            </div>`;
-          }).join('')}
-        </div>
-        ${warningNames.length > 0 ? `<div class="mgmt-warning">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-          <span><strong>${warningNames.join(', ')}</strong> tidak hadir hari ini. Koordinasikan pengganti.</span>
-        </div>` : ''}
-      </div>`;
+          <div class="mgmt-today-members">
+            ${jadwalHariIni.anggota.map(n => {
+              const absent = absentToday.includes(n);
+              return `<div class="mgmt-member-chip ${absent ? 'absent' : ''}">
+                <i class="fa-solid ${absent ? 'fa-circle-xmark' : 'fa-circle-check'}"></i>
+                ${n}
+                ${absent ? '<span class="absent-badge">Tidak Hadir</span>' : ''}
+              </div>`;
+            }).join('')}
+          </div>
+          ${warningNames.length > 0 ? `<div class="mgmt-warning">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span><strong>${warningNames.join(', ')}</strong> tidak hadir hari ini. Koordinasikan pengganti.</span>
+          </div>` : ''}
+        </div>`;
+      }
     }
 
     // Weekly schedule grid
@@ -189,17 +214,28 @@
     const container = document.getElementById('mbgContent');
     if (!container) return;
 
-    const today = todayNoTime();
+    const today    = todayNoTime();
     const todayIdx = hariIni();
+    const todayKey = today.getFullYear() + '-' +
+                     String(today.getMonth() + 1).padStart(2, '0') + '-' +
+                     String(today.getDate()).padStart(2, '0');
+
+    const liburInfo = window.HariLibur
+      ? window.HariLibur.cekHariLibur(todayKey)
+      : { isLibur: todayIdx === 0, alasan: 'Hari Minggu', tipe: 'minggu' };
 
     const sesiHariIni = getMBGSesiUntuk(today);
 
     let html = '';
 
-    if (todayIdx === 0) {
-      html += `<div class="mgmt-info-card">
-        <div class="mgmt-info-icon"><i class="fa-solid fa-calendar-xmark"></i></div>
-        <div><strong>Hari Minggu</strong> — Tidak ada jadwal pengambilan MBG hari ini.</div>
+    if (liburInfo.isLibur) {
+      const icon = liburInfo.tipe === 'minggu' ? 'fa-calendar-xmark' : 'fa-moon';
+      html += `<div class="mgmt-info-card libur-card">
+        <div class="mgmt-info-icon" style="background:rgba(248,113,113,0.1);color:#f87171"><i class="fa-solid ${icon}"></i></div>
+        <div>
+          <strong style="color:#f87171">🔴 Hari Libur — ${liburInfo.alasan}</strong>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted)">Jadwal MBG tidak berjalan hari ini. Sesi dilanjutkan &amp; <strong>tidak berganti</strong> di hari aktif berikutnya.</p>
+        </div>
       </div>`;
     } else if (sesiHariIni) {
       html += `<div class="mgmt-today-card mbg-today">
@@ -219,22 +255,33 @@
       </div>`;
     }
 
-    // Show rotation schedule (7 days)
-    html += `<div class="mgmt-section-title"><i class="fa-solid fa-rotate"></i> Rotasi Jadwal MBG (7 Hari)</div>`;
+    // Show rotation schedule (7 days) — skip hari libur
+    html += `<div class="mgmt-section-title"><i class="fa-solid fa-rotate"></i> Rotasi Jadwal MBG (7 Hari Aktif)</div>`;
     html += `<div class="mbg-rotation-list">`;
 
-    for (let offset = -1; offset <= 5; offset++) {
+    let shownDays = 0;
+    let checkOffset = -2;
+    while (shownDays < 8 && checkOffset < 30) {
       const d = new Date(today);
-      d.setDate(d.getDate() + offset);
-      if (d.getDay() === 0) continue; // skip Minggu
+      d.setDate(d.getDate() + checkOffset);
+      checkOffset++;
 
-      const sesi = getMBGSesiUntuk(d);
-      if (!sesi) continue;
+      const dk = d.getFullYear() + '-' +
+                 String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                 String(d.getDate()).padStart(2, '0');
+      const isLib = window.HariLibur
+        ? window.HariLibur.cekHariLibur(dk).isLibur
+        : d.getDay() === 0;
+      if (isLib) continue; // lewati libur
 
-      const isToday = offset === 0;
-      const isPast  = offset < 0;
+      const sesi    = getMBGSesiUntuk(d);
+      if (!sesi) { shownDays++; continue; }
+
+      const isToday = dk === todayKey;
+      const isPast  = d < today;
+      shownDays++;
+
       const bulanNm = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-
       html += `<div class="mbg-rotation-row ${isToday ? 'today' : ''} ${isPast ? 'past' : ''}">
         <div class="mbg-rot-date">
           <div class="mbg-rot-day">${getNamaHari(d.getDay())}</div>
@@ -284,7 +331,7 @@
       <div class="org-school-icon"><i class="fa-solid fa-school"></i></div>
       <div class="org-school-info">
         <div class="org-school-name">Struktur Organisasi Kelas</div>
-        <div class="org-school-sub">Tahun Pelajaran 2025/2026</div>
+        <div class="org-school-sub">Tahun Pelajaran 2024/2025</div>
       </div>
     </div>
 
@@ -319,6 +366,12 @@
     const s = document.createElement('style');
     s.id = 'manajemen-styles';
     s.textContent = `
+
+/* ===== LIBUR CARD ===== */
+.libur-card {
+  border-color: rgba(248,113,113,0.25) !important;
+  background: rgba(248,113,113,0.05) !important;
+}
 
 /* ===== SECTION TITLE ===== */
 .mgmt-section-title {
